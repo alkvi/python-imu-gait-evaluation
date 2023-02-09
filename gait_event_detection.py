@@ -132,6 +132,9 @@ def get_hs_to_wavelet(acc_ap, fs, turning, plot_figure, save_fig_name, wavelet_t
     if plot_figure:
         print("Plotting")
         plt.figure(0)
+        figure = plt.gcf() # get current figure
+        plt.rcParams["figure.figsize"] = (16,8)
+        plt.rcParams.update({'font.size': 20})
         plt.plot(time_vector, acc_ap_pp, 'b--', label='acc_ap')
         plt.plot(time_vector, acc_wave_detrended, color="grey", linestyle="dotted", label='dcwt1')
         plt.plot(time_vector, acc_wave_2, 'k', label='dcwt2')
@@ -143,9 +146,6 @@ def get_hs_to_wavelet(acc_ap, fs, turning, plot_figure, save_fig_name, wavelet_t
         plt.legend(loc="upper right")
         
         if save_fig_name is not None:
-            figure = plt.gcf() # get current figure
-            plt.rcParams["figure.figsize"] = (16,8)
-            plt.rcParams.update({'font.size': 20})
             plt.savefig(save_fig_name, dpi = 100)
             plt.close()
         else:
@@ -264,6 +264,9 @@ def get_hs_to_ff_gyro_peak(gyro_data, fs, plot_figure, save_fig_name):
 
     if plot_figure:
         plt.figure()
+        figure = plt.gcf() # get current figure
+        plt.rcParams["figure.figsize"] = (16,8)
+        plt.rcParams.update({'font.size': 20})
         x = np.arange(len(gyro_data_norm))
         time_vector = np.arange(0, len(gyro_data_norm)) / fs
         plt.plot(time_vector, gyro_data_norm, 'b', label='Gyro')
@@ -274,11 +277,7 @@ def get_hs_to_ff_gyro_peak(gyro_data, fs, plot_figure, save_fig_name):
         plt.title(save_fig_name)
         plt.xlabel('Time [s]')
         plt.legend(loc="upper right")
-        
         if save_fig_name is not None:
-            figure = plt.gcf() # get current figure
-            plt.rcParams["figure.figsize"] = (16,8)
-            plt.rcParams.update({'font.size': 20})
             plt.savefig(save_fig_name, dpi = 100)
             plt.close()
         else:
