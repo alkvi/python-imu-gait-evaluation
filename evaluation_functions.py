@@ -32,10 +32,6 @@ def evaluate_accuracy(vicon_label_file, imu_param_file, result_file, output_fold
     all_data_frames = []
     for subject in all_subjects:
         for session in all_sessions:
-            
-            # Skip APDM6 since we don't know which session is extra
-            if subject in ['APDM6']:
-                continue
 
             imu_session_data = imu_param_data[(imu_param_data['Subject'] == subject) & (imu_param_data['Session'] == session)]
             imu_means = imu_session_data.mean()
@@ -175,8 +171,8 @@ def generate_icc_figure(icc_file, is_lumbar):
 
     # Re-arrange in order
     cadence_idx = icc_data[icc_data['Measure'].str.contains('Cadence')].index.values
-    ds_idx = icc_data[icc_data['Measure'].str.contains('Single Support')].index.values
-    ss_idx = icc_data[icc_data['Measure'].str.contains('Double Support')].index.values
+    ss_idx = icc_data[icc_data['Measure'].str.contains('Single Support')].index.values
+    ds_idx = icc_data[icc_data['Measure'].str.contains('Double Support')].index.values
     sl_idx = icc_data[icc_data['Measure'].str.contains('Step Length')].index.values
     ws_idx = icc_data[icc_data['Measure'].str.contains('Walking Speed')].index.values
     str_l_idx = icc_data[icc_data['Measure'].str.contains('Stride Length')].index.values
@@ -184,9 +180,9 @@ def generate_icc_figure(icc_file, is_lumbar):
 
     # If data from lumbar sensor, use step length. Otherwise stride length.
     if is_lumbar:
-        order = np.concatenate([sl_idx, ws_idx, ds_idx, ss_idx, st_idx, cadence_idx])
+        order = np.concatenate([cadence_idx, st_idx, ds_idx, ss_idx, ws_idx, sl_idx])
     else:
-        order = np.concatenate([str_l_idx, ws_idx, ds_idx, ss_idx, st_idx, cadence_idx])
+        order = np.concatenate([cadence_idx, st_idx, ds_idx, ss_idx, ws_idx, str_l_idx])
     icc_data = icc_data.reindex(order)
 
     # Divide
@@ -197,7 +193,7 @@ def generate_icc_figure(icc_file, is_lumbar):
     ylabels = straight_data['Measure'].str.split('-').str[0].str.strip() + straight_data['Measure'].str.split('-').str[-1]
     new_labels = []
     for label in ylabels:
-        if "0.6" in label:
+        if "1.2" in label:
             new_labels.append(label)
         else:
             new_labels.append(str.split(label, " ")[-1])
@@ -210,11 +206,12 @@ def generate_icc_figure(icc_file, is_lumbar):
     y_index = np.arange(N)  # the y locations for the groups
     width = 0.35       # the width of the bars
     fig, ax = plt.subplots()
-    rects1 = ax.barh(y_index, straight_data['ICC2-1'], width, color='c')
-    rects2 = ax.barh(y_index + width, turn_data['ICC2-1'], width, color='g')
+    rects_straight = ax.barh(y_index, straight_data['ICC2-1'], width, color='c')
+    rects_turn = ax.barh(y_index + width, turn_data['ICC2-1'], width, color='g')
+    plt.gca().invert_yaxis() # barh plots in reverse order
     ax.set_yticks(y_index + width / 2)
     ax.set_yticklabels(ylabels)
-    ax.legend((rects1[0], rects2[0]), ('Straight', 'Turn'), loc="lower right")
+    ax.legend((rects_straight[0], rects_turn[0]), ('Straight', 'Turn'), loc="lower right")
     ax.set_xlabel('ICC')
     ax.set_title('ICC(A,1) between Vicon measures and IMU')
 
@@ -273,10 +270,6 @@ def generate_boxplot(vicon_label_file, imu_param_file, output_folder):
     all_data_frames = []
     for subject in all_subjects:
         for session in all_sessions:
-
-            # Skip APDM6 since we don't know which session is extra
-            if subject in ['APDM6']:
-                continue
 
             imu_session_data = imu_param_data[(imu_param_data['Subject'] == subject) & (imu_param_data['Session'] == session)]
             imu_means = imu_session_data.mean()

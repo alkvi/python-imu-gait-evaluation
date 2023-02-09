@@ -3,4 +3,5 @@ eval_figures_mobility_lab/
 saved_figures_m1/
 saved_figures_m2/
 saved_figures_m3/
-saved_figures/
+saved_figures*/
+__pycache__/

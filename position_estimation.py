@@ -302,7 +302,6 @@ def get_positions_lumbar(accXYZ, hs_lf, hs_rf, fs, plot_pos, save_fig_name, stat
         utility_functions.plot_axes_with_hs(pos, pos_filt, hs_lf, hs_rf, 'Pos')
 
         if save_fig_name is not None:
-            print("TRYINGH TO SAVE")
             plt.savefig(save_fig_name)
             plt.close()
         else:

@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 import matplotlib.patches as mpatches
 import evaluation_functions
 
-def generate_boxplot_mobility_lab(vicon_label_file, imu_param_file):
+def generate_boxplot_mobility_lab(vicon_label_file, imu_param_file, output_folder_name):
 
     # Load label data
     vicon_label_data = pd.read_csv(vicon_label_file, encoding="utf-8", header=0, usecols=range(1, 18))  
@@ -108,7 +108,7 @@ def generate_boxplot_mobility_lab(vicon_label_file, imu_param_file):
         all_labels.append("0.6")
 
         # Generate a boxplot
-        save_path = "eval_figures_mobility_lab/Box - " + measure + ".png"
+        save_path = output_folder_name + "/Box - " + measure + ".png"
         fig, ax = plt.subplots()
         ax.set_title(measure)
         bplot = ax.boxplot(all_scores, patch_artist=True)
@@ -233,6 +233,11 @@ if __name__ == "__main__":
     imu_param_data = pd.read_csv(imu_param_file, encoding="utf-8", header=0)  
     print(imu_param_data)
 
+    # Prepare folder for figures
+    output_folder_name = os.getcwd() + "/saved_figures_mobility_lab"
+    if not (os.path.isdir(output_folder_name)):
+        os.mkdir(output_folder_name)
+
     # Go through each subject and session, create a dataframe for comparison of means
     all_data_frames = []
     for index, row in imu_param_data.iterrows():
@@ -240,10 +245,6 @@ if __name__ == "__main__":
         session = row["Session"]
         vicon_session_data = vicon_label_data[(vicon_label_data['Subject'] == subject) & (vicon_label_data['Session'] == session)]
         means = vicon_session_data.mean()
-
-        # Skip APDM6 since we don't know which session is extra
-        if subject in ['APDM6']:
-            continue
 
         vicon_session_data = vicon_label_data[(vicon_label_data['Subject'] == subject) & (vicon_label_data['Session'] == session)]
         vicon_mean_cadence = (vicon_session_data['Cadence (R)'].sum() + vicon_session_data['Cadence (L)'].sum()) / (pd.notnull(vicon_session_data['Cadence (R)']).sum() + pd.notnull(vicon_session_data['Cadence (L)']).sum())
@@ -288,21 +289,21 @@ if __name__ == "__main__":
         frame = vicon_imu_frame[(vicon_imu_frame['Session'].str.startswith('Straight1.2'))]
         score_vicon = frame[measure_vicon]
         score_imu = frame[measure_imu]
-        score_data = evaluation_functions.get_icc_score(score_vicon, score_imu, measure + " - straight - 1.2", plot_result=False)
+        score_data = evaluation_functions.get_icc_score(score_vicon, score_imu, measure + " - straight - 1.2", output_folder_name, plot_result=False)
         all_scores.append(score_data)
 
         # Straight walking, 0.9
         frame = vicon_imu_frame[(vicon_imu_frame['Session'].str.startswith('Straight0.9'))]
         score_vicon = frame[measure_vicon]
         score_imu = frame[measure_imu]
-        score_data = evaluation_functions.get_icc_score(score_vicon, score_imu, measure + " - straight - 0.9", plot_result=False)
+        score_data = evaluation_functions.get_icc_score(score_vicon, score_imu, measure + " - straight - 0.9", output_folder_name, plot_result=False)
         all_scores.append(score_data)
 
         # Straight walking, 0.6
         frame = vicon_imu_frame[(vicon_imu_frame['Session'].str.startswith('Straight0.6'))]
         score_vicon = frame[measure_vicon]
         score_imu = frame[measure_imu]
-        score_data = evaluation_functions.get_icc_score(score_vicon, score_imu, measure + " - straight - 0.6", plot_result=False)
+        score_data = evaluation_functions.get_icc_score(score_vicon, score_imu, measure + " - straight - 0.6", output_folder_name, plot_result=False)
         all_scores.append(score_data)
 
     print("Result")
@@ -315,5 +316,5 @@ if __name__ == "__main__":
 
     vicon_label_file = "Data/vicon_target_data.csv"
     icc_file_name = save_file_name
-    generate_boxplot_mobility_lab(vicon_label_file, imu_param_file)
+    generate_boxplot_mobility_lab(vicon_label_file, imu_param_file, output_folder_name)
     generate_icc_figure_mobility_lab(icc_file_name)
