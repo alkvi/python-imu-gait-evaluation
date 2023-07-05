@@ -179,8 +179,8 @@ def get_hs_to_ff_gyro_peak(gyro_data, fs, plot_figure, save_fig_name):
     search_interval = 1.5
     search_interval_samples = int(fs*search_interval)
 
-    all_hs = []
-    all_to = []
+    all_hs = np.array([])
+    all_to = np.array([])
     for i in range(0,len(ms_idx)):
         t_ms_idx = ms_idx[i]
         start_idx = int(t_ms_idx - search_interval_samples)
@@ -199,11 +199,18 @@ def get_hs_to_ff_gyro_peak(gyro_data, fs, plot_figure, save_fig_name):
 
         # The nearest local minimum after the t_ms was selected as IC (i.e. HS).
         min_peak_height = 0.1
-        signal_interval_filt_hs = signal_interval_filt[search_interval_samples:-1]
+        if search_interval_samples > t_ms_idx:
+            signal_interval_filt_hs = signal_interval_filt[t_ms_idx:-1]
+        else:
+            signal_interval_filt_hs = signal_interval_filt[search_interval_samples:-1]
+
         
         # In case we have a very tiny segment, use argmax for peak. Otherwise find_peaks.
-        if (len(signal_interval_filt_hs)) < 3:
-            hs_idx = np.argmax(signal_interval_filt_hs)
+        if (len(signal_interval_filt_hs)) < 1:
+            # Interval might be at the end of signal, leave empty
+            hs_idx = []
+        elif (len(signal_interval_filt_hs)) < 3:
+            hs_idx = [np.argmax(signal_interval_filt_hs)]
         else:
             hs_idx, properties = scipy.signal.find_peaks(-signal_interval_filt_hs, height=min_peak_height)
         
@@ -237,8 +244,8 @@ def get_hs_to_ff_gyro_peak(gyro_data, fs, plot_figure, save_fig_name):
     # Stance is time between HS and TO on same leg.
     # Identify foot flat times as when angular velocity absolute value
     # is below a certain threshold, during each stance phase.
-    all_tff = []
-    all_stance = []
+    all_tff = np.array([])
+    all_stance = np.array([])
     for i in range(0,len(all_hs)):
         
         hs = all_hs[i]

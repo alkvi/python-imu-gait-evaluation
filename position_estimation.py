@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import utility_functions
 
-def get_positions_global(accXYZ, orientation_quaternion, hs, to, ff, plot_pos, save_fig_name):
+def get_positions_global(accXYZ, orientation_quaternion, ff, plot_pos, save_fig_name):
 
     # Scipy library expects quaternion in (x,y,z,w)
     quat_s = np.copy(orientation_quaternion)
@@ -182,14 +182,8 @@ def get_positions_global(accXYZ, orientation_quaternion, hs, to, ff, plot_pos, s
         plt.plot(t, pos[:,0], label='x')
         plt.plot(t, pos[:,1], label='y')
         plt.plot(t, pos[:,2], label='z')
-        plt.plot(hs, pos[:,0][hs], 'r*', label='HS')
-        plt.plot(to, pos[:,0][to], 'g*', label='TO')
         plt.plot(ff, pos[:,0][ff], 'k*', label='FF')
-        plt.plot(hs, pos[:,1][hs], 'r*')
-        plt.plot(to, pos[:,1][to], 'g*')
         plt.plot(ff, pos[:,1][ff], 'k*')
-        plt.plot(hs, pos[:,2][hs], 'r*')
-        plt.plot(to, pos[:,2][to], 'g*')
         plt.plot(ff, pos[:,2][ff], 'k*')
         plt.title('position')
         plt.legend()

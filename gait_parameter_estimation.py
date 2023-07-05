@@ -111,7 +111,7 @@ def get_step_length_speed_lumbar(pos, hs_lf, hs_rf, fs, subject_height, invalid_
     for hs_idx in range(0,len(hs_start_side)-1):
 
         # Make sure we have enough HS to calculate this cycle
-        if hs_idx > len(hs_other_side):
+        if hs_idx >= len(hs_other_side):
             continue
 
         # Make sure events are in the correct order
@@ -129,6 +129,9 @@ def get_step_length_speed_lumbar(pos, hs_lf, hs_rf, fs, subject_height, invalid_
         # lowest position during a step cycle
         # Assuming the lumbar sensor is placed around L5, use factor l = height x 0.53 (Del Din 2016)
         z_interval = z_positions[hs_start_side[hs_idx]:hs_other_side[hs_idx]]
+        if len(z_interval) < 1:
+            print("No z position data between HS")
+            continue
         delta_z = z_interval.max() - z_interval.min()
         delta_z = abs(delta_z)
         step_length = 2*np.sqrt(2*(subject_height/100)*0.53*delta_z - np.power(delta_z,2))
@@ -151,6 +154,9 @@ def get_stride_length_walking_speed_foot(ff_times, positions, fs_apdm, plot_traj
     # Get start and end positions
     end_ff = ff_times[-1]
     start_pos = positions[0,:]
+    if end_ff >= positions.shape[0]:
+        end_ff = positions.shape[0]-1
+        ff_times[-1] = end_ff
     end_pos = positions[end_ff,:]
 
     # Set up a plot for showing trajectories
