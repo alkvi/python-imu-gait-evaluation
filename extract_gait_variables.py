@@ -365,6 +365,8 @@ if __name__ == "__main__":
         # Read IMU data
         imu_data = pd.read_parquet(pq_file)
         subject = list(imu_data.columns)[0].split("/")[0]
+
+        # Skip subjects not included in study
         if subject in ['FNP1002','FNP1014']:
             print("Skipping " + subject)
             continue
