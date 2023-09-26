@@ -144,13 +144,8 @@ def get_step_length_speed_lumbar(pos, hs_lf, hs_rf, fs, subject_height, invalid_
 
 # Stride lengths and walking speeds from 3D positions of foot sensor.
 # Stride: how much one foot travels from FF to FF.
-def get_stride_length_walking_speed_foot(ff_times, positions, fs_apdm, plot_traj):
+def get_stride_length_walking_speed_foot(ff_times, positions, fs_apdm, plot_traj, heading_steps=1, min_lim=0, max_lim=2):
     
-    # Set parameters
-    heading_steps = 2
-    min_lim = 0
-    max_lim = 2
-
     # Get start and end positions
     end_ff = ff_times[-1]
     start_pos = positions[0,:]

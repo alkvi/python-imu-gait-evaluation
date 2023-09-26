@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import filtfilt, butter
 from matplotlib import pyplot as plt
+from ahrs import Quaternion
 
 # Prepare data numpy arrays
 def prepare_data(data, lumbar):
@@ -143,6 +144,24 @@ def plot_quaternions(ax, q, ff, title_str):
     ax.plot(ff, q[:,3][ff], 'k*')
     ax.set_xlabel('Sample', fontsize = 15)
     ax.set_ylim(-1,1)
+    ax.set_title(title_str, size=15)
+    ax.tick_params(axis='both', which='major', labelsize=15)
+    ax.tick_params(axis='both', which='minor', labelsize=13)
+    ax.legend(loc="upper right")
+
+# Plot a quaternion converted to euler angles
+def plot_euler(ax, q, ff, title_str):
+    euler_angles = np.array([Quaternion(q_arr).to_angles() for q_arr in q])
+    euler_angles = np.degrees(euler_angles)
+    t = np.arange(euler_angles.shape[0]) 
+    ax.plot(t, euler_angles[:,0], label='x')
+    ax.plot(t, euler_angles[:,1], label='y')
+    ax.plot(t, euler_angles[:,2], label='z')
+    ax.plot(ff, euler_angles[:,0][ff], 'k*')
+    ax.plot(ff, euler_angles[:,1][ff], 'k*')
+    ax.plot(ff, euler_angles[:,2][ff], 'k*')
+    ax.set_xlabel('Sample', fontsize = 15)
+    #ax.set_ylim(-180,180)
     ax.set_title(title_str, size=15)
     ax.tick_params(axis='both', which='major', labelsize=15)
     ax.tick_params(axis='both', which='minor', labelsize=13)

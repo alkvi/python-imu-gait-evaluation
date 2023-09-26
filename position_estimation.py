@@ -1,8 +1,194 @@
 import os
 import scipy
 import numpy as np
+from ahrs.filters import Madgwick
 import matplotlib.pyplot as plt
 import utility_functions
+
+def get_positions_global_per_ff(imu_data, q0, ff, plot_pos, save_fig_name):
+
+    # Calculate linearly de-drifted velocity between foot flats
+    vel = np.zeros(imu_data[0].shape)
+    plot_pos=False
+    for ff_idx in range(0,len(ff)-1):
+        
+        tff = ff[ff_idx]
+        next_tff = ff[ff_idx+1]
+        if tff == next_tff:
+            continue
+
+        # Get the data for the FF-FF interval
+        acc_data = imu_data[0][tff:next_tff,:]
+        gyro_data = imu_data[1][tff:next_tff,:]
+        mag_data = imu_data[2][tff:next_tff,:]
+
+        # Calculate orientation quaternions in a global frame (ENU) via Madgwick's orientation filter
+        # Gain as recommended for MARG systems from Madgwick et al 2011
+        madgwick_gain = 0.041
+        madgwick = Madgwick(gyr=gyro_data, acc=acc_data, mag=mag_data, frequency=128, Dt=1/128, gain=madgwick_gain, q0=q0)
+
+        # Plot the resulting quaternions
+        plot_quaternions_on = False
+        if plot_quaternions_on:
+            fig, (ax1, ax2) = plt.subplots(2)
+            utility_functions.plot_quaternions(ax1, madgwick.Q, [0], "Madgwick quaternions (L)")
+            utility_functions.plot_euler(ax2, madgwick.Q, [0], "Madgwick euler (L)")
+            plt.show()
+
+        # Scipy library expects quaternion in (x,y,z,w)
+        orientation_quaternion = madgwick.Q
+        quat_s = np.copy(orientation_quaternion)
+        quat_s[:,0] = orientation_quaternion[:,1]
+        quat_s[:,1] = orientation_quaternion[:,2]
+        quat_s[:,2] = orientation_quaternion[:,3]
+        quat_s[:,3] = orientation_quaternion[:,0]
+        quat_r = scipy.spatial.transform.Rotation.from_quat(quat_s)
+
+        # Rotate body accelerations to Earth frame (ENU)
+        accXYZ_global = quat_r.inv().apply(acc_data)
+
+        # Remove gravity from measurements (in earth frame)
+        gravity_vector = np.transpose(np.array([np.zeros(acc_data.shape[0]), np.zeros(acc_data.shape[0]), np.ones(acc_data.shape[0])*9.81]))
+        accXYZ_global = accXYZ_global - gravity_vector
+        
+        if plot_pos:
+            fig, (ax1, ax2, ax3) = plt.subplots(3)
+            t = np.arange(acc_data.shape[0]) 
+            ax1.plot(t, acc_data[:,0], label='X orig')
+            ax1.plot(t, accXYZ_global[:,0], label='X rot')
+            ax1.set_title('Acc X')
+            ax2.plot(t, acc_data[:,1], label='Y orig')
+            ax2.plot(t, accXYZ_global[:,1], label='Y rot')
+            ax2.set_title('Acc Y')
+            ax3.plot(t, acc_data[:,2], label='Z orig')
+            ax3.plot(t, accXYZ_global[:,2], label='Z rot')
+            ax3.set_title('Acc Z')
+            plt.legend()
+            plt.show()
+        
+        # Integrate to get velocity
+        time_vector = np.arange(tff, next_tff) / 128
+        vel[tff:next_tff,0] = scipy.integrate.cumulative_trapezoid(accXYZ_global[:, 0], x=time_vector, axis=0, initial=0)
+        vel[tff:next_tff,1] = scipy.integrate.cumulative_trapezoid(accXYZ_global[:, 1], x=time_vector, axis=0, initial=0)
+        vel[tff:next_tff,2] = scipy.integrate.cumulative_trapezoid(accXYZ_global[:, 2], x=time_vector, axis=0, initial=0)
+
+        # Get drift between FFs
+        vel_interval = vel[tff:next_tff,:]
+        vel_interval_t = np.arange(vel_interval.shape[0])
+        vel_linear_drift_x = scipy.interpolate.interp1d([vel_interval_t[0], vel_interval_t[-1]], [vel_interval[0,0], vel_interval[-1,0]])
+        vel_linear_drift_y = scipy.interpolate.interp1d([vel_interval_t[0], vel_interval_t[-1]], [vel_interval[0,1], vel_interval[-1,1]])
+        vel_linear_drift_z = scipy.interpolate.interp1d([vel_interval_t[0], vel_interval_t[-1]], [vel_interval[0,2], vel_interval[-1,2]])
+        drift_x = vel_linear_drift_x(vel_interval_t)
+        drift_y = vel_linear_drift_y(vel_interval_t)
+        drift_z = vel_linear_drift_z(vel_interval_t)
+        
+        # De-drift
+        vel[tff:next_tff,0] = vel[tff:next_tff,0] - drift_x
+        vel[tff:next_tff,1] = vel[tff:next_tff,1] - drift_y
+        vel[tff:next_tff,2] = vel[tff:next_tff,2] - drift_z
+
+    # Plot velocities of each stride
+    if plot_pos:
+        fig, (ax1, ax2, ax3) = plt.subplots(3)
+        for ff_idx in range(0,len(ff)-1):
+            tff = ff[ff_idx]
+            next_tff = ff[ff_idx+1]
+            if tff == next_tff:
+                continue
+            vel_interval = vel[tff:next_tff,:]
+            t = np.arange(vel_interval.shape[0]) 
+            ax1.plot(t, vel_interval[:,0])
+            ax2.plot(t, vel_interval[:,1])
+            ax3.plot(t, vel_interval[:,2])
+        ax1.set_title("X velocity profile")
+        ax2.set_title("Y velocity profile")
+        ax3.set_title("Z velocity profile")
+        plt.show()
+
+    # Plot overall velocity
+    if plot_pos:
+        plt.figure(0)
+        t = np.arange(vel.shape[0]) 
+        plt.plot(t, vel[:,0], label='x')
+        plt.plot(ff, vel[:,0][ff], 'k*', label='FF')
+        plt.plot(t, vel[:,1], label='y')
+        plt.plot(ff, vel[:,1][ff], 'k*', label='FF')
+        plt.plot(t, vel[:,2], label='z')
+        plt.plot(ff, vel[:,2][ff], 'k*', label='FF')
+        plt.title('Velocity')
+        plt.legend()
+        plt.show()
+
+    # Integrate velocity to yield position
+    pos = np.zeros(vel.shape)
+    for ff_idx in range(0,len(ff)-1):
+        tff = ff[ff_idx]
+        next_tff = ff[ff_idx+1]
+        if tff == next_tff:
+            continue
+        initial_x = pos[tff-1,0]
+        initial_y = pos[tff-1,1]
+        initial_z = pos[tff-1,2]
+        time_vector = np.arange(tff, next_tff) / 128
+        pos[tff:next_tff,0] = scipy.integrate.cumulative_trapezoid(vel[tff:next_tff, 0], x=time_vector, axis=0, initial=0) + initial_x
+        pos[tff:next_tff,1] = scipy.integrate.cumulative_trapezoid(vel[tff:next_tff, 1], x=time_vector, axis=0, initial=0) + initial_y
+        pos[tff:next_tff,2] = scipy.integrate.cumulative_trapezoid(vel[tff:next_tff, 2], x=time_vector, axis=0, initial=0) + initial_z
+
+    # Fix last index
+    pos[ff[-1]-1:,0] = pos[ff[-1]-1,0]
+    pos[ff[-1]-1:,1] = pos[ff[-1]-1,1]
+    pos[ff[-1]-1:,2] = pos[ff[-1]-1,2]
+
+    # Plot position profile of each stride
+    if plot_pos:
+        fig, (ax1, ax2, ax3) = plt.subplots(3)
+        for ff_idx in range(0,len(ff)-1):
+            tff = ff[ff_idx]
+            next_tff = ff[ff_idx+1]
+            if tff == next_tff:
+                continue
+            pos_interval = pos[tff:next_tff,:]
+            t = np.arange(pos_interval.shape[0]) 
+            ax1.plot(t, pos_interval[:,0])
+            ax2.plot(t, pos_interval[:,1])
+            ax3.plot(t, pos_interval[:,2])
+        ax1.set_title("X position profile")
+        ax2.set_title("Y position profile")
+        ax3.set_title("Z position profile")
+        plt.show()
+
+    # Plot positions
+    if plot_pos:
+        plt.figure(0)
+        t = np.arange(vel.shape[0]) 
+        plt.plot(t, pos[:,0], label='x')
+        plt.plot(t, pos[:,1], label='y')
+        plt.plot(t, pos[:,2], label='z')
+        plt.plot(ff, pos[:,0][ff], 'k*', label='FF')
+        plt.plot(ff, pos[:,1][ff], 'k*')
+        plt.plot(ff, pos[:,2][ff], 'k*')
+        plt.title('position')
+        plt.legend()
+
+        if save_fig_name is not None:
+            plt.savefig(save_fig_name)
+            plt.close()
+        else:
+            plt.show()
+        
+        # Show a 3D trace of positions
+        plt.figure(0)
+        ax = plt.axes(projection='3d')
+        ax.set_box_aspect([1,1,1])
+        ax.plot3D(pos[:,0], pos[:,1], pos[:,2], 'gray')
+        ax.plot3D(pos[:,0][ff], pos[:,1][ff], pos[:,2][ff], 'k*')
+        ax.set_xlabel('X (East)')
+        ax.set_ylabel('Y (North)')
+        ax.set_zlabel('Z (Up)')
+        utility_functions.set_axes_equal(ax)
+        plt.show()
+
+    return pos
 
 def get_positions_global(accXYZ, orientation_quaternion, ff, plot_pos, save_fig_name):
 
