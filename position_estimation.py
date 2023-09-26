@@ -5,11 +5,10 @@ from ahrs.filters import Madgwick
 import matplotlib.pyplot as plt
 import utility_functions
 
-def get_positions_global_per_ff(imu_data, q0, ff, plot_pos, save_fig_name):
+def get_positions_global_per_ff(imu_data, q0, ff, plot_pos, save_fig_name, plot_quaternions=False):
 
     # Calculate linearly de-drifted velocity between foot flats
     vel = np.zeros(imu_data[0].shape)
-    plot_pos=False
     for ff_idx in range(0,len(ff)-1):
         
         tff = ff[ff_idx]
@@ -28,8 +27,7 @@ def get_positions_global_per_ff(imu_data, q0, ff, plot_pos, save_fig_name):
         madgwick = Madgwick(gyr=gyro_data, acc=acc_data, mag=mag_data, frequency=128, Dt=1/128, gain=madgwick_gain, q0=q0)
 
         # Plot the resulting quaternions
-        plot_quaternions_on = False
-        if plot_quaternions_on:
+        if plot_quaternions:
             fig, (ax1, ax2) = plt.subplots(2)
             utility_functions.plot_quaternions(ax1, madgwick.Q, [0], "Madgwick quaternions (L)")
             utility_functions.plot_euler(ax2, madgwick.Q, [0], "Madgwick euler (L)")
