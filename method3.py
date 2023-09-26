@@ -136,8 +136,8 @@ if __name__ == "__main__":
             positions_rf = position_estimation.get_positions_global(acc_data_rf, madgwick_rf.Q, hs_rf, to_rf, ff_rf, plot_positions, output_folder_name + "/Positions - " + subject + " - " + session + " - Right.png")
 
             # Calculate stride length and walking speed
-            stride_lengths_lf, walking_speeds_lf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_lf, positions_lf, fs_apdm, plot_trajectory)
-            stride_lengths_rf, walking_speeds_rf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_rf, positions_rf, fs_apdm, plot_trajectory)
+            stride_lengths_lf, walking_speeds_lf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_lf, positions_lf, fs_apdm, plot_trajectory, heading_steps=2)
+            stride_lengths_rf, walking_speeds_rf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_rf, positions_rf, fs_apdm, plot_trajectory, heading_steps=2)
 
             # Get temporal parameters
             step_times_rf = gait_parameter_estimation.get_step_time(hs_lf, hs_rf, fs_apdm)
