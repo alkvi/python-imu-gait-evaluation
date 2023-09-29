@@ -2,13 +2,118 @@ import os
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
-from ahrs.filters import Madgwick
 import utility_functions
 import gait_event_detection
 import position_estimation
 import gait_parameter_estimation
 
 fs_imu = 128
+
+# Class containing gait parameters for a bout of walking
+class SegmentParameters:
+
+    # Constructor
+    def __init__(self, means_data, step_times_left, step_times_right, stride_lengths_left, stride_lengths_right):
+        self.means_data = means_data
+        self.step_times_left = step_times_left
+        self.step_times_right = step_times_right
+        self.stride_lengths_left = stride_lengths_left
+        self.stride_lengths_right = stride_lengths_right
+        self.trial_type = "None"
+
+    # Factory function to initialize from multiple SegmentParameters
+    # This will take the average of all segments for means data, and 
+    # concatenate all vector data
+    @classmethod
+    def from_multiple_segments(cls, segments):
+
+        # If we have no segments coming in, create empty object
+        if len(segments) < 1:
+            return cls(None, [], [], [], [])
+        
+        # Get the means
+        segment_means = [segment.means_data for segment in segments]
+        means_frame = pd.DataFrame([pd.concat(segment_means).mean(axis=0)])
+        
+        # Concatenate vector data
+        step_times_left = np.concatenate([params.step_times_left for params in segments])
+        step_times_right = np.concatenate([params.step_times_right for params in segments])
+        stride_lengths_left = np.concatenate([params.stride_lengths_left for params in segments])
+        stride_lengths_right = np.concatenate([params.stride_lengths_right for params in segments])
+
+        # Create data class
+        return cls(means_frame, step_times_left, step_times_right, stride_lengths_left, stride_lengths_right)
+    
+    # Copy from another SegmentParameters
+    def copy(self, other):
+        self.means_data = other.means_data
+        self.step_times_left = other.step_times_left
+        self.step_times_right = other.step_times_right
+        self.stride_lengths_left = other.stride_lengths_left
+        self.stride_lengths_right = other.stride_lengths_right
+
+    # Set trial type
+    def set_trial_type(self, trial_type):
+        self.trial_type = trial_type
+
+# Calculate variability parameters according to Galna et al 2013
+def calculate_variability_parameters(block_parameters, subject, session):
+
+    # Group by trial type
+    trial_types = np.unique([params.trial_type for params in block_parameters])
+    all_frames = []
+    for trial in trial_types:
+        trial_block_parameters = [params for params in block_parameters if params.trial_type == trial]
+        trial_parameters = SegmentParameters.from_multiple_segments(trial_block_parameters)
+        
+        # Variability calculation
+        step_time_sd_lr = np.sqrt(
+            (np.var(trial_parameters.step_times_left) + 
+            np.var(trial_parameters.step_times_right)) / 2)
+        stride_length_sd_lr = np.sqrt(
+            (np.var(trial_parameters.stride_lengths_left) + 
+            np.var(trial_parameters.stride_lengths_right)) / 2)
+        
+        # For asymmetry: take difference of each gait cycle
+        # e.g. step_times_left[0] - step_times_right[0]
+        # Asymmetry step time
+        step_time_min_length = np.min([len(trial_parameters.step_times_left), len(trial_parameters.step_times_right)])
+        lr_array = np.array([np.array(trial_parameters.step_times_left[0:step_time_min_length]).astype(float),
+                             np.array(trial_parameters.step_times_right[0:step_time_min_length]).astype(float)]).astype(float)
+        mean_array = np.mean(lr_array, axis=0)
+        step_time_diff_array = np.abs(np.diff(lr_array, axis=0))
+        step_time_diff_array_percent = np.divide(step_time_diff_array, mean_array)*100
+
+        # Asymmetry stride length
+        stride_length_min_length = np.min([len(trial_parameters.stride_lengths_left), len(trial_parameters.stride_lengths_right)])
+        lr_array = np.array([np.array(trial_parameters.stride_lengths_left[0:stride_length_min_length]).astype(float),
+                             np.array(trial_parameters.stride_lengths_right[0:stride_length_min_length]).astype(float)]).astype(float)
+        mean_array = np.mean(lr_array, axis=0)
+        stride_length_diff_array = np.abs(np.diff(lr_array, axis=0))
+        stride_length_diff_array_percent = np.divide(stride_length_diff_array, mean_array)*100
+
+        # Compile parameters
+        var_data = {
+            'subject': [subject],
+            'session': [session],
+            'trial_type': [trial],
+            'Step Time Variability': [step_time_sd_lr],
+            'Step Time Variability Amount Used Values (L+R)': [len(trial_parameters.step_times_left) + len(trial_parameters.step_times_right)],
+            'Stride Length Variability': [stride_length_sd_lr],
+            'Stride Length Variability Amount Used Values (L+R)': [len(trial_parameters.stride_lengths_left) + len(trial_parameters.stride_lengths_right)],
+            'Step Time Asymmetry': [np.mean(step_time_diff_array)],
+            'Step Time Asymmetry Percent': [np.mean(step_time_diff_array_percent)],
+            'Step Time Asymmetry Amount Used Values': [step_time_min_length],
+            'Stride Length Asymmetry': [np.mean(stride_length_diff_array)],
+            'Stride Length Asymmetry Percent': [np.mean(stride_length_diff_array_percent)],
+            'Stride Length Asymmetry Amount Used Values': [stride_length_min_length],
+        }
+        var_frame = pd.DataFrame(data=var_data)
+        all_frames.append(var_frame)
+    
+    session_var_frame = pd.concat(all_frames)
+    return session_var_frame
+
 
 def extract_turn_times(lumbar_gyro_data, mag_data_lumbar, plot_turn_regions=0, min_turn_limit=2.0, min_region_length=30):
     
@@ -32,7 +137,6 @@ def extract_turn_times(lumbar_gyro_data, mag_data_lumbar, plot_turn_regions=0, m
     # Plot turn regions
     if plot_turn_regions:
         fig, (ax1, ax2) = plt.subplots(2)
-        xaxis = np.arange(0,lumbar_gyro_data.shape[0])
         ax1.plot(mag_data_lumbar)
         ax2.plot(lumbar_gyro_data[:,2])
         ax1.legend(['x','y','z'])
@@ -119,18 +223,18 @@ def extract_straight_walking(data_lf, data_rf, ff_lf, ff_rf, hs_lf, hs_rf, to_lf
     positions_rf = position_estimation.get_positions_global_per_ff(data_rf, q0_rf, ff_rf, plot_positions, None)
 
     # Calculate stride length and walking speed
-    stride_lengths_lf, walking_speeds_lf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_lf, positions_lf, fs_apdm, plot_trajectory)
-    stride_lengths_rf, walking_speeds_rf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_rf, positions_rf, fs_apdm, plot_trajectory)
+    stride_lengths_lf, walking_speeds_lf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_lf, positions_lf, fs_imu, plot_trajectory)
+    stride_lengths_rf, walking_speeds_rf =  gait_parameter_estimation.get_stride_length_walking_speed_foot(ff_rf, positions_rf, fs_imu, plot_trajectory)
 
     # Get temporal parameters
-    step_times_rf = gait_parameter_estimation.get_step_time(hs_lf, hs_rf, fs_apdm)
-    step_times_lf = gait_parameter_estimation.get_step_time(hs_rf, hs_lf, fs_apdm)
+    step_times_rf = gait_parameter_estimation.get_step_time(hs_lf, hs_rf, fs_imu)
+    step_times_lf = gait_parameter_estimation.get_step_time(hs_rf, hs_lf, fs_imu)
     cadence_lf = gait_parameter_estimation.get_cadence(step_times_lf)
     cadence_rf = gait_parameter_estimation.get_cadence(step_times_rf)
-    tss_times_lf = gait_parameter_estimation.get_single_support(to_lf, hs_lf, fs_apdm)
-    tss_times_rf = gait_parameter_estimation.get_single_support(to_rf, hs_rf, fs_apdm)
+    tss_times_lf = gait_parameter_estimation.get_single_support(to_lf, hs_lf, fs_imu)
+    tss_times_rf = gait_parameter_estimation.get_single_support(to_rf, hs_rf, fs_imu)
 
-    # Only take the means
+    # Get means and return parameters
     means_data = {
         'Cadence L': [np.mean(cadence_lf)],
         'Single Support L': [np.mean(tss_times_lf)],
@@ -144,7 +248,8 @@ def extract_straight_walking(data_lf, data_rf, ff_lf, ff_rf, hs_lf, hs_rf, to_lf
         'Walking Speed R': [np.mean(walking_speeds_rf)]
     }
     means_frame = pd.DataFrame(data=means_data)
-    return means_frame
+    segment_data = SegmentParameters(means_frame, step_times_lf, step_times_rf, stride_lengths_lf, stride_lengths_rf)
+    return segment_data
 
 def extract_with_pendulum(acc_data_lumbar, hs_lf, hs_rf, to_lf, to_rf, subject_height):
 
@@ -153,17 +258,17 @@ def extract_with_pendulum(acc_data_lumbar, hs_lf, hs_rf, to_lf, to_rf, subject_h
         return None
 
     # Get temporal parameters
-    step_times_rf = gait_parameter_estimation.get_step_time(hs_lf, hs_rf, fs_apdm)
-    step_times_lf = gait_parameter_estimation.get_step_time(hs_rf, hs_lf, fs_apdm)
+    step_times_rf = gait_parameter_estimation.get_step_time(hs_lf, hs_rf, fs_imu)
+    step_times_lf = gait_parameter_estimation.get_step_time(hs_rf, hs_lf, fs_imu)
     cadence_lf = gait_parameter_estimation.get_cadence(step_times_lf)
     cadence_rf = gait_parameter_estimation.get_cadence(step_times_rf)
-    tss_times_lf = gait_parameter_estimation.get_single_support(to_lf, hs_lf, fs_apdm)
-    tss_times_rf = gait_parameter_estimation.get_single_support(to_rf, hs_rf, fs_apdm)
+    tss_times_lf = gait_parameter_estimation.get_single_support(to_lf, hs_lf, fs_imu)
+    tss_times_rf = gait_parameter_estimation.get_single_support(to_rf, hs_rf, fs_imu)
 
     # Get spatial parameters if we have subject height
-    positions_lumbar = position_estimation.get_positions_lumbar(acc_data_lumbar, hs_lf, hs_rf, fs_apdm, plot_positions, None)
+    positions_lumbar = position_estimation.get_positions_lumbar(acc_data_lumbar, hs_lf, hs_rf, fs_imu, plot_positions, None)
     if subject_height:
-        step_lengths, walking_speeds = gait_parameter_estimation.get_step_length_speed_lumbar(positions_lumbar, hs_lf, hs_rf, fs_apdm, subject_height)
+        step_lengths, walking_speeds = gait_parameter_estimation.get_step_length_speed_lumbar(positions_lumbar, hs_lf, hs_rf, fs_imu, subject_height)
     else:
         step_lengths = []
         walking_speeds = []
@@ -179,7 +284,7 @@ def extract_with_pendulum(acc_data_lumbar, hs_lf, hs_rf, to_lf, to_rf, subject_h
         walking_speeds_rf = walking_speeds[1::2]
         walking_speeds_lf = walking_speeds[0::2]
 
-    # Only take the means
+    # Get means and return parameters
     means_data = {
         'Cadence L': [np.mean(cadence_lf)],
         'Single Support L': [np.mean(tss_times_lf)],
@@ -193,10 +298,11 @@ def extract_with_pendulum(acc_data_lumbar, hs_lf, hs_rf, to_lf, to_rf, subject_h
         'Walking Speed R': [np.mean(walking_speeds_rf)]
     }
     means_frame = pd.DataFrame(data=means_data)
-    return means_frame
+    segment_data = SegmentParameters(means_frame, step_times_lf, step_times_rf, [], [])
+    return segment_data
 
 
-def extract_variables(series_in, imu_data, session, subject_height, calibration_data, plot_gait_events=False):
+def extract_variables(series_in, imu_data, session, subject_height, calibration_data, block_parameters, plot_gait_events=False):
     trial_type = series_in['trial_type']
     imu_onset = float(series_in['adjusted_onset_imu'])
     trial_duration = float(series_in['duration'])
@@ -217,8 +323,7 @@ def extract_variables(series_in, imu_data, session, subject_height, calibration_
     acc_data_lumbar, gyro_data_lumbar, mag_data_lumbar = extract_condition_data(imu_data, session, "LUMBAR", imu_onset, trial_duration)
 
     # Get turning times
-    min_turn_limit = 1.8
-    turn_regions = extract_turn_times(gyro_data_lumbar, mag_data_lumbar, min_turn_limit=min_turn_limit, min_region_length=25)
+    turn_regions = extract_turn_times(gyro_data_lumbar, mag_data_lumbar, min_turn_limit=1.8, min_region_length=25)
 
     # We should exclude any turning steps for the straight walking conditions.
     # We should also use different algoritihms for straight walking compared to navigation.
@@ -256,8 +361,6 @@ def extract_variables(series_in, imu_data, session, subject_height, calibration_
 
     # Extract from segment
     all_segment_params = []
-    step_count_left = []
-    step_count_right = []
     for segment in straight_segments:
 
         # Skip very short segments
@@ -281,15 +384,11 @@ def extract_variables(series_in, imu_data, session, subject_height, calibration_
         if len(hs_lf) < 3 or len(hs_rf) < 3:
             print("Skipping segment with few steps")
             continue
-        
-        # Keep a count of steps
-        step_count_left.append(len(hs_lf))
-        step_count_right.append(len(hs_rf))
 
         # Filter signals to smooth them out
-        seg_gyro_data_lf, seg_acc_data_lf, seg_mag_data_lf = utility_functions.filter_signal(seg_gyro_data_lf, seg_acc_data_lf, seg_mag_data_lf, fs_apdm, plot_filter)
-        seg_gyro_data_rf, seg_acc_data_rf, seg_mag_data_rf = utility_functions.filter_signal(seg_gyro_data_rf, seg_acc_data_rf, seg_mag_data_rf, fs_apdm, plot_filter)
-        seg_gyro_data_lumbar, seg_acc_data_lumbar, seg_mag_data_lumbar = utility_functions.filter_signal(seg_gyro_data_lumbar, seg_acc_data_lumbar, seg_mag_data_lumbar, fs_apdm, plot_filter)
+        seg_gyro_data_lf, seg_acc_data_lf, seg_mag_data_lf = utility_functions.filter_signal(seg_gyro_data_lf, seg_acc_data_lf, seg_mag_data_lf, fs_imu, plot_filter)
+        seg_gyro_data_rf, seg_acc_data_rf, seg_mag_data_rf = utility_functions.filter_signal(seg_gyro_data_rf, seg_acc_data_rf, seg_mag_data_rf, fs_imu, plot_filter)
+        seg_gyro_data_lumbar, seg_acc_data_lumbar, seg_mag_data_lumbar = utility_functions.filter_signal(seg_gyro_data_lumbar, seg_acc_data_lumbar, seg_mag_data_lumbar, fs_imu, plot_filter)
 
         if use_pendulum:
             segment_params = extract_with_pendulum(seg_acc_data_lumbar, hs_lf, hs_rf, to_lf, to_rf, subject_height)
@@ -317,11 +416,17 @@ def extract_variables(series_in, imu_data, session, subject_height, calibration_
 
     if len(all_segment_params) < 1:
         return series_in
-    for column in all_segment_params[0]:
-        col_values = [seg[column].values[0] for seg in all_segment_params]
-        series_in[column] = np.mean(col_values)
-        series_in["Step Count L"] = np.sum(step_count_left)
-        series_in["Step Count R"] = np.sum(step_count_right)
+    
+    # Create parameters for the whole block and add to passed list
+    total_segment_parameters = SegmentParameters.from_multiple_segments(all_segment_params)
+    total_segment_parameters.set_trial_type(trial_type)
+    block_parameters.append(total_segment_parameters)
+
+    # Add values to series passed into the function and return
+    for column in total_segment_parameters.means_data:
+        series_in[column] = total_segment_parameters.means_data[column].values[0]
+    series_in["Step Count L"] = len(total_segment_parameters.step_times_left)
+    series_in["Step Count R"] = len(total_segment_parameters.step_times_right)
     return series_in
 
 
@@ -332,18 +437,17 @@ if __name__ == "__main__":
     plot_quaternions_on = 0
     plot_positions = 0
     plot_trajectory = 0
-    fs_apdm = 128
 
     # Where all the data is stored
     pq_folder = "../Data/imu_data_parquet"
     pq_files = [ f.path for f in os.scandir(pq_folder)]
-    event_file = "../Data/all_events_nirs_imu.csv"
 
     # Read calibration data
     calibration_file = "../Data/calibration_stance_data.csv"
     calibration_data = pd.read_csv(calibration_file)
 
     # Read event data
+    event_file = "../Data/all_events_nirs_imu.csv"
     all_events = pd.read_csv(event_file)
     subjects = np.unique(all_events['subject'])
     sessions = ['protocol_1', 'protocol_2', 'protocol_3']
@@ -360,6 +464,7 @@ if __name__ == "__main__":
     
     # Go through each pq file
     calculated_param_frames = []
+    variability_frames = []
     for pq_file in pq_files:
 
         # Read IMU data
@@ -389,6 +494,9 @@ if __name__ == "__main__":
 
             # Get event data and acc data for session
             events = all_events[(all_events["subject"] == subject) & (all_events["session"] == session.replace('_', ''))].copy()
+            if events.empty:
+                print(f"{subject} does not have {session}, skipping")
+                continue
 
             # FNP1006 seems to have the label RIGHT_WRIST instead of RIGHT_FOOT on protocol 1. Replace.
             if subject == "FNP1006" and session == "protocol_1":
@@ -396,18 +504,33 @@ if __name__ == "__main__":
                 new_columns = [column.replace("WRIST", "FOOT") for column in imu_data if "RIGHT_WRIST" in column]
                 col_mapping = dict(zip(old_columns, new_columns))
                 imu_data.rename(columns = col_mapping, inplace = True)
+            
+            # Prepare a list for holding detailed block values
+            block_parameters = []
 
             # Go through each condition
             calculated_params = events.apply(extract_variables, axis=1, imu_data=imu_data, session=session, subject_height=subject_height,
-                                             calibration_data=subject_calibration_data, plot_gait_events=plot_gait_events)
+                                             calibration_data=subject_calibration_data, plot_gait_events=plot_gait_events, block_parameters=block_parameters)
             block_numbers = np.arange(start=1, stop=len(calculated_params['onset'])+1)
             calculated_params['block'] = block_numbers
-            print(calculated_params)
             calculated_param_frames.append(calculated_params)
 
-    final_frame = pd.concat(calculated_param_frames).drop(columns=["onset", "adjusted_onset_imu", "duration", "imu_fnirs_lag_seconds", "sample", "value"])
+            # Print results for subject
+            print(calculated_params)
+
+            # With data from all blocks, also calculate variability data
+            if len(block_parameters) > 1:
+                variability_data = calculate_variability_parameters(block_parameters, subject, session.replace('_', ''))
+                variability_frames.append(variability_data)
+                print(variability_data)
+
+    final_frame_gait = pd.concat(calculated_param_frames).drop(columns=["onset", "adjusted_onset_imu", "duration", "imu_fnirs_lag_seconds", "sample", "value"])
     for col in ['block','trial_type', 'session', 'subject']:
-        final_frame.insert(0, col, final_frame.pop(col))
-    print(final_frame)
-    final_frame.to_csv("../Data/imu_gait_parameters.csv", index=False)
+        final_frame_gait.insert(0, col, final_frame_gait.pop(col))
+    print(final_frame_gait)
+    final_frame_gait.to_csv("../Data/imu_gait_parameters.csv", index=False)
+
+    final_frame_variability = pd.concat(variability_frames)
+    print(final_frame_variability)
+    final_frame_variability.to_csv("../Data/imu_variability_parameters.csv", index=False)
     print('done')
