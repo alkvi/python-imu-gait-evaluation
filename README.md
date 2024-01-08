@@ -15,4 +15,4 @@ Three combinations have been validated against data simultaneously captured from
 - Method 2 - Peak detection + inverted pendulum
 - Method 3 - Peak detection + strapdown inertial navigation
 
-Results can be found in: (to be added)
+Results can be found in https://doi.org/10.1016/j.jbiomech.2023.111907 
