@@ -2,6 +2,8 @@
 
 This repository contains algorithms for spatiotemporal gait parameter calculation from 3-axis IMU/MARG data (accelerometer, magnetometer, gyroscope).
 
+Actual functions in a neater library format: https://github.com/alkvi/pigait
+
 Gait event detection methods:
 - Wavelet analysis (based on [Pham et al 2017](https://doi.org/10.3389%2Ffneur.2017.00457))
 - Peak detection on gyroscope data (based on [Salarian et al 2004](https://doi.org/10.1109/tbme.2004.827933) and [Mariani et al 2010](https://doi.org/10.1016/j.jbiomech.2010.07.003))
